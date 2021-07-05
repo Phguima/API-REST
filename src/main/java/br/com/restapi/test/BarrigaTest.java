@@ -1,6 +1,7 @@
 package br.com.restapi.test;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.*;
 import static org.hamcrest.Matchers.is;
 
 import java.util.HashMap;
@@ -85,17 +86,8 @@ public class BarrigaTest extends BaseTest {
 	
 	@Test
 	public void deveInserirMovimentacaoComSucesso() {
-		Movimentacao mov = new Movimentacao();
-		mov.setConta_id(666032);
-//		mov.setUsuario_id(APP_PORT);
-		mov.setDescricao("Descrição");
-		mov.setEnvolvido("Sr. Aparecido");
-		mov.setTipo("REC");
-		mov.setData_transacao("01/01/2020");
-		mov.setData_pagamento("01/05/2020");
-		mov.setValor(100f);
-		mov.setStatus(true);
-		
+		Movimentacao mov = getMovimentacaoValida();
+
 		given()
 			.header("Authorization", "JWT " + TOKEN)
 			.body(mov)
@@ -109,6 +101,84 @@ public class BarrigaTest extends BaseTest {
 	
 	@Test
 	public void deveValidarCamposObrigatóriosNaMovimentacao() {
+		given()
+			.header("Authorization", "JWT " + TOKEN)
+			.body("{}")
+		.when()
+			.post("/transacoes")
+		.then()
+			.log().all()
+			.statusCode(400)	
+			.body("$", hasSize(8))
+			.body("msg", hasItems("Data da Movimentação é obrigatório",
+								"Data do pagamento é obrigatório",
+								"Descrição é obrigatório",
+								"Interessado é obrigatório",
+								"Valor é obrigatório",
+								"Valor deve ser um número",
+								"Conta é obrigatório",
+								"Situação é obrigatório"
+					))
+		;
+	}
+	
+	@Test
+	public void naoDeveCadastrarMovimentacaoFutura() {
+		Movimentacao mov = getMovimentacaoValida();
+		mov.setData_transacao("01/01/2022");
+		mov.setData_pagamento("01/05/2022");
+		
+		given()
+			.header("Authorization", "JWT " + TOKEN)
+			.body(mov)
+		.when()
+			.post("/transacoes")
+		.then()
+			.log().all()
+			.statusCode(400)
+			.body("msg", hasItem("Data da Movimentação deve ser menor ou igual à data atual"))
+		;
+	}
+	
+	@Test
+	public void naoDeveExcluirContaComMovimentacao() {
+		given()
+			.header("Authorization", "JWT " + TOKEN)
+		.when()
+			.delete("/contas/666032")
+		.then()
+			.log().all()
+			.statusCode(500)
+			.body("constraint", is("transacoes_conta_id_foreign"))
+		;
+	}
+	
+	@Test
+	public void deveCalcularSaldoDasContas() {
+		given()
+			.header("Authorization", "JWT " + TOKEN)
+		.when()
+			.get("/saldo")
+		.then()
+			.log().all()
+			.statusCode(200)
+			.body("find{it.conta_id == 666032}.saldo", is("100.00"))
+		;
+	}
+	
+	@Test
+	public void deveRemoverMovimentacao() {
+		given()
+			.header("Authorization", "JWT " + TOKEN)
+		.when()
+			.delete("/transacoes/620837")
+		.then()
+			.log().all()
+			.statusCode(204)
+		;
+	}
+	
+	private Movimentacao getMovimentacaoValida() {
 		Movimentacao mov = new Movimentacao();
 		mov.setConta_id(666032);
 //		mov.setUsuario_id(APP_PORT);
@@ -120,14 +190,6 @@ public class BarrigaTest extends BaseTest {
 		mov.setValor(100f);
 		mov.setStatus(true);
 		
-		given()
-			.header("Authorization", "JWT " + TOKEN)
-			.body(mov)
-		.when()
-			.post("/transacoes")
-		.then()
-			.log().all()
-			.statusCode(201)
-		;
+		return mov;
 	}
 }
